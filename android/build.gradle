@@ -2,14 +2,14 @@ group 'com.cloudwebrtc.webrtc'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    ext.kotlin_version = '1.6.10'
+    ext.kotlin_version = '1.7.10'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.1.1'
+        classpath 'com.android.tools.build:gradle:7.3.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -56,4 +56,6 @@ dependencies {
     implementation 'com.github.davidliu:audioswitch:fb33b237aa50b3d1d2dea0e0695ecb7b38a98971'
     implementation 'androidx.annotation:annotation:1.1.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'com.quickbirdstudios:opencv:4.5.3.0'
+
 }
