@@ -19,6 +19,8 @@ dependencies:
   permission_handler: ^10.2.0
   sdp_transform: ^0.3.2
 
+dependency_overrides:
+  collection: ^1.17.1
 
 dev_dependencies:
   flutter_test:
