@@ -6,7 +6,7 @@ environment:
   sdk: '>=2.19.3 <4.0.0'
 
 dependencies:
-  collection: ^1.17.1
+#  collection: ^1.17.1
   dart_webrtc: 1.1.1
   flutter:
     sdk: flutter
@@ -22,7 +22,7 @@ dev_dependencies:
   test: any
 
 dependency_overrides:
-  collection: ^1.17.2
+  collection: ^1.18.0
 
 flutter:
   plugin:
