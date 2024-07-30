@@ -43,11 +43,13 @@ typedef void (^NavigatorUserMediaErrorCallback)(NSString* errorType, NSString* e
  */
 typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
+- (NSDictionary*)defaultVideoConstraints {
+    return @{@"minWidth" : @"1280", @"minHeight" : @"720", @"minFrameRate" : @"30"};
+}
+
 - (RTCMediaConstraints*)defaultMediaStreamConstraints {
-  NSDictionary* mandatoryConstraints =
-      @{@"minWidth" : @"1280", @"minHeight" : @"720", @"minFrameRate" : @"30"};
   RTCMediaConstraints* constraints =
-      [[RTCMediaConstraints alloc] initWithMandatoryConstraints:mandatoryConstraints
+      [[RTCMediaConstraints alloc] initWithMandatoryConstraints:[self defaultVideoConstraints]
                                             optionalConstraints:nil];
   return constraints;
 }
@@ -100,9 +102,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     }
   }
 
+#if !defined(TARGET_OS_IPHONE)
   if (audioDeviceId != nil) {
     [self selectAudioInput:audioDeviceId result:nil];
   }
+#endif
 
   NSString* trackId = [[NSUUID UUID] UUIDString];
   RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithTrackId:trackId];
@@ -357,6 +361,10 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     }
   }
 
+  if ([videoConstraints isKindOfClass:[NSNumber class]]) {
+    videoConstraints = @{@"mandatory": [self defaultVideoConstraints]};
+  }
+
   NSInteger targetWidth = 0;
   NSInteger targetHeight = 0;
   NSInteger targetFps = 0;
@@ -421,13 +429,16 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                                             targetWidth:targetWidth
                                                            targetHeight:targetHeight];
 
+    CMVideoDimensions selectedDimension = CMVideoFormatDescriptionGetDimensions(selectedFormat.formatDescription);
+    NSInteger selectedWidth = (NSInteger) selectedDimension.width;
+    NSInteger selectedHeight = (NSInteger) selectedDimension.height;
     NSInteger selectedFps = [self selectFpsForFormat:selectedFormat targetFps:targetFps];
 
     self._lastTargetFps = selectedFps;
     self._lastTargetWidth = targetWidth;
     self._lastTargetHeight = targetHeight;
     
-    NSLog(@"target format %ldx%ld, targetFps: %ld, seledted fps %ld", targetWidth, targetHeight, targetFps, selectedFps);
+    NSLog(@"target format %ldx%ld, targetFps: %ld, selected format: %ldx%ld, selected fps %ld", targetWidth, targetHeight, targetFps, selectedWidth, selectedHeight, selectedFps);
 
     if ([videoDevice lockForConfiguration:NULL]) {
       @try {
@@ -471,8 +482,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     videoTrack.settings = @{
       @"deviceId" : videoDeviceId,
       @"kind" : @"videoinput",
-      @"width" : [NSNumber numberWithInteger:targetWidth ],
-      @"height" : [NSNumber numberWithInteger:targetHeight],
+      @"width" : [NSNumber numberWithInteger:selectedWidth],
+      @"height" : [NSNumber numberWithInteger:selectedHeight],
       @"frameRate" : [NSNumber numberWithInteger:selectedFps],
       @"facingMode" : facingMode,
     };
@@ -618,22 +629,22 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     }];
   }
 #if TARGET_OS_IPHONE
+
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
   for (AVAudioSessionPortDescription* port in session.session.availableInputs) {
     // NSLog(@"input portName: %@, type %@", port.portName,port.portType);
     [sources addObject:@{
-      @"facing" : @"",
       @"deviceId" : port.UID,
       @"label" : port.portName,
       @"groupId" : port.portType,
       @"kind" : @"audioinput",
     }];
   }
+
   for (AVAudioSessionPortDescription* port in session.currentRoute.outputs) {
     // NSLog(@"output portName: %@, type %@", port.portName,port.portType);
     if (session.currentRoute.outputs.count == 1 && ![port.UID isEqualToString:@"Speaker"]) {
       [sources addObject:@{
-        @"facing" : @"",
         @"deviceId" : @"Speaker",
         @"label" : @"Speaker",
         @"groupId" : @"Speaker",
@@ -641,7 +652,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       }];
     }
     [sources addObject:@{
-      @"facing" : @"",
       @"deviceId" : port.UID,
       @"label" : port.portName,
       @"groupId" : port.portType,
@@ -655,7 +665,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   NSArray* inputDevices = [audioDeviceModule inputDevices];
   for (RTCIODevice* device in inputDevices) {
     [sources addObject:@{
-      @"facing" : @"",
       @"deviceId" : device.deviceId,
       @"label" : device.name,
       @"kind" : @"audioinput",
@@ -665,7 +674,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   NSArray* outputDevices = [audioDeviceModule outputDevices];
   for (RTCIODevice* device in outputDevices) {
     [sources addObject:@{
-      @"facing" : @"",
       @"deviceId" : device.deviceId,
       @"label" : device.name,
       @"kind" : @"audiooutput",
@@ -812,6 +820,40 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   result(nil);
 }
 
+- (void)mediaStreamTrackSetZoom:(RTCMediaStreamTrack*)track
+                           zoomLevel:(double)zoomLevel
+                          result:(FlutterResult)result {
+#if TARGET_OS_OSX
+  NSLog(@"Not supported on macOS. Can't set zoom");
+  return;
+#endif
+#if TARGET_OS_IPHONE
+  if (!self.videoCapturer) {
+    NSLog(@"Video capturer is null. Can't set zoom");
+    return;
+  }
+  if (self.videoCapturer.captureSession.inputs.count == 0) {
+    NSLog(@"Video capturer is missing an input. Can't set zoom");
+    return;
+  }
+
+  AVCaptureDeviceInput* deviceInput = [self.videoCapturer.captureSession.inputs objectAtIndex:0];
+  AVCaptureDevice* device = deviceInput.device;
+
+  NSError* error;
+  if ([device lockForConfiguration:&error] == NO) {
+    NSLog(@"Failed to acquire configuration lock. %@", error.localizedDescription);
+    return;
+  }
+  
+  CGFloat desiredZoomFactor = (CGFloat)zoomLevel;
+  device.videoZoomFactor = MAX(1.0, MIN(desiredZoomFactor, device.activeFormat.videoMaxZoomFactor));
+  [device unlockForConfiguration];
+
+  result(nil);
+#endif
+}
+
 - (void)mediaStreamTrackSwitchCamera:(RTCMediaStreamTrack*)track result:(FlutterResult)result {
   if (!self.videoCapturer) {
     NSLog(@"Video capturer is null. Can't switch camera");
@@ -864,7 +906,10 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       return device;
     }
   }
-  return captureDevices[0];
+  if(captureDevices.count > 0) {
+    return captureDevices[0];
+  }
+  return nil;
 }
 
 - (AVCaptureDeviceFormat*)selectFormatForDevice:(AVCaptureDevice*)device

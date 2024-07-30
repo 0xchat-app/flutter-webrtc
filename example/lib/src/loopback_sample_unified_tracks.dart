@@ -42,9 +42,8 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
   bool _audioDecrypt = false;
   bool _videoDecrypt = false;
   List<MediaDeviceInfo>? _mediaDevicesList;
-  String? _senderParticipantId;
   final FrameCryptorFactory _frameCyrptorFactory = frameCryptorFactory;
-  KeyProvider? _keyProvider;
+  KeyProvider? _keySharedProvider;
   final Map<String, FrameCryptor> _frameCyrptors = {};
   Timer? _timer;
   final _configuration = <String, dynamic>{
@@ -169,50 +168,33 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
   void initLocalConnection() async {
     if (_localPeerConnection != null) return;
     try {
-      _localPeerConnection =
-          await createPeerConnection(_configuration, _constraints);
+      var pc = await createPeerConnection(_configuration, _constraints);
 
-      _localPeerConnection!.onSignalingState = _onLocalSignalingState;
-      _localPeerConnection!.onIceGatheringState = _onLocalIceGatheringState;
-      _localPeerConnection!.onIceConnectionState = _onLocalIceConnectionState;
-      _localPeerConnection!.onConnectionState = _onLocalPeerConnectionState;
-      _localPeerConnection!.onIceCandidate = _onLocalCandidate;
-      _localPeerConnection!.onRenegotiationNeeded = _onLocalRenegotiationNeeded;
+      pc.onSignalingState = (state) async {
+        var state2 = await pc.getSignalingState();
+        print('local pc: onSignalingState($state), state2($state2)');
+      };
+
+      pc.onIceGatheringState = (state) async {
+        var state2 = await pc.getIceGatheringState();
+        print('local pc: onIceGatheringState($state), state2($state2)');
+      };
+      pc.onIceConnectionState = (state) async {
+        var state2 = await pc.getIceConnectionState();
+        print('local pc: onIceConnectionState($state), state2($state2)');
+      };
+      pc.onConnectionState = (state) async {
+        var state2 = await pc.getConnectionState();
+        print('local pc: onConnectionState($state), state2($state2)');
+      };
+
+      pc.onIceCandidate = _onLocalCandidate;
+      pc.onRenegotiationNeeded = _onLocalRenegotiationNeeded;
+
+      _localPeerConnection = pc;
     } catch (e) {
       print(e.toString());
     }
-  }
-
-  void _onLocalSignalingState(RTCSignalingState state) {
-    print('localSignalingState: $state');
-  }
-
-  void _onRemoteSignalingState(RTCSignalingState state) {
-    print('remoteSignalingState: $state');
-  }
-
-  void _onLocalIceGatheringState(RTCIceGatheringState state) {
-    print('localIceGatheringState: $state');
-  }
-
-  void _onRemoteIceGatheringState(RTCIceGatheringState state) {
-    print('remoteIceGatheringState: $state');
-  }
-
-  void _onLocalIceConnectionState(RTCIceConnectionState state) {
-    print('localIceConnectionState: $state');
-  }
-
-  void _onRemoteIceConnectionState(RTCIceConnectionState state) {
-    print('remoteIceConnectionState: $state');
-  }
-
-  void _onLocalPeerConnectionState(RTCPeerConnectionState state) {
-    print('localPeerConnectionState: $state');
-  }
-
-  void _onRemotePeerConnectionState(RTCPeerConnectionState state) {
-    print('remotePeerConnectionState: $state');
   }
 
   void _onLocalCandidate(RTCIceCandidate localCandidate) async {
@@ -272,10 +254,12 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
       sharedKey: true,
       ratchetSalt: Uint8List.fromList(demoRatchetSalt.codeUnits),
       ratchetWindowSize: 16,
+      failureTolerance: -1,
     );
 
-    _keyProvider ??=
+    _keySharedProvider ??=
         await _frameCyrptorFactory.createDefaultKeyProvider(keyProviderOptions);
+    await _keySharedProvider?.setSharedKey(key: aesKey);
     acaps = await getRtpSenderCapabilities('audio');
     print('sender audio capabilities: ${acaps!.toMap()}');
 
@@ -285,18 +269,31 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
     if (_remotePeerConnection != null) return;
 
     try {
-      _remotePeerConnection =
-          await createPeerConnection(_configuration, _constraints);
+      var pc = await createPeerConnection(_configuration, _constraints);
 
-      _remotePeerConnection!.onTrack = _onTrack;
-      _remotePeerConnection!.onSignalingState = _onRemoteSignalingState;
-      _remotePeerConnection!.onIceGatheringState = _onRemoteIceGatheringState;
-      _remotePeerConnection!.onIceConnectionState = _onRemoteIceConnectionState;
-      _remotePeerConnection!.onConnectionState = _onRemotePeerConnectionState;
-      _remotePeerConnection!.onIceCandidate = _onRemoteCandidate;
-      _remotePeerConnection!.onRenegotiationNeeded =
-          _onRemoteRenegotiationNeeded;
+      pc.onTrack = _onTrack;
 
+      pc.onSignalingState = (state) async {
+        var state2 = await pc.getSignalingState();
+        print('remote pc: onSignalingState($state), state2($state2)');
+      };
+
+      pc.onIceGatheringState = (state) async {
+        var state2 = await pc.getIceGatheringState();
+        print('remote pc: onIceGatheringState($state), state2($state2)');
+      };
+      pc.onIceConnectionState = (state) async {
+        var state2 = await pc.getIceConnectionState();
+        print('remote pc: onIceConnectionState($state), state2($state2)');
+      };
+      pc.onConnectionState = (state) async {
+        var state2 = await pc.getConnectionState();
+        print('remote pc: onConnectionState($state), state2($state2)');
+      };
+
+      pc.onIceCandidate = _onRemoteCandidate;
+      pc.onRenegotiationNeeded = _onRemoteRenegotiationNeeded;
+      _remotePeerConnection = pc;
       await _negotiate();
     } catch (e) {
       print(e.toString());
@@ -347,24 +344,15 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
                 participantId: id,
                 sender: element,
                 algorithm: Algorithm.kAesGcm,
-                keyProvider: _keyProvider!);
+                keyProvider: _keySharedProvider!);
         frameCyrptor.onFrameCryptorStateChanged = (participantId, state) =>
             print('EN onFrameCryptorStateChanged $participantId $state');
         _frameCyrptors[id] = frameCyrptor;
         await frameCyrptor.setKeyIndex(0);
       }
 
-      if (kind == 'video') {
-        _senderParticipantId = id;
-      }
-
       var _frameCyrptor = _frameCyrptors[id];
-      if (enabled) {
-        await _frameCyrptor?.setEnabled(true);
-        await _keyProvider?.setKey(participantId: id, index: 0, key: aesKey);
-      } else {
-        await _frameCyrptor?.setEnabled(false);
-      }
+      await _frameCyrptor?.setEnabled(enabled);
       await _frameCyrptor?.updateCodec(
           kind == 'video' ? videoDropdownValue : audioDropdownValue);
     });
@@ -383,7 +371,7 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
                 participantId: id,
                 receiver: element,
                 algorithm: Algorithm.kAesGcm,
-                keyProvider: _keyProvider!);
+                keyProvider: _keySharedProvider!);
         frameCyrptor.onFrameCryptorStateChanged = (participantId, state) =>
             print('DE onFrameCryptorStateChanged $participantId $state');
         _frameCyrptors[id] = frameCyrptor;
@@ -391,12 +379,7 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
       }
 
       var _frameCyrptor = _frameCyrptors[id];
-      if (enabled) {
-        await _frameCyrptor?.setEnabled(true);
-        await _keyProvider?.setKey(participantId: id, index: 0, key: aesKey);
-      } else {
-        await _frameCyrptor?.setEnabled(false);
-      }
+      await _frameCyrptor?.setEnabled(enabled);
       await _frameCyrptor?.updateCodec(
           kind == 'video' ? videoDropdownValue : audioDropdownValue);
     });
@@ -417,8 +400,7 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
   }
 
   void _ratchetKey() async {
-    var newKey = await _keyProvider?.ratchetKey(
-        participantId: _senderParticipantId!, index: 0);
+    var newKey = await _keySharedProvider?.ratchetSharedKey(index: 0);
     print('newKey $newKey');
   }
 
@@ -534,7 +516,6 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
       transceiver.setCodecPreferences(codecs);
     });
     await _negotiate();
-
     setState(() {
       _micOn = true;
     });
@@ -600,7 +581,11 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
       if (fromConnection) {
         await _connectionRemoveTrack(track);
       }
-      await _localStream!.removeTrack(track);
+      try {
+        await _localStream!.removeTrack(track);
+      } catch (e) {
+        print(e.toString());
+      }
       await track.stop();
     }
   }
@@ -612,7 +597,11 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
       if (fromConnection) {
         await _connectionRemoveTrack(track);
       }
-      await _localStream!.removeTrack(track);
+      try {
+        await _localStream!.removeTrack(track);
+      } catch (e) {
+        print(e.toString());
+      }
       await track.stop();
     }
   }

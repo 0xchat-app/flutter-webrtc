@@ -3,7 +3,7 @@ description: Demonstrates how to use the webrtc plugin.
 version: 1.0.0
 publish_to: none
 environment:
-  sdk: '>=2.19.3 <4.0.0'
+  sdk: '>=3.3.0 <4.0.0'
   
 dependencies:
   # The following adds the Cupertino Icons font to your application.
@@ -19,15 +19,14 @@ dependencies:
   permission_handler: ^10.2.0
   sdp_transform: ^0.3.2
 
+dependency_overrides:
+  collection: ^1.17.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   pedantic: ^1.11.0
-
-dependency_overrides:
-  collection: ^1.18.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://www.dartlang.org/tools/pub/pubspec
