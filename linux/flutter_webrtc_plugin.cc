@@ -44,13 +44,23 @@ class FlutterWebRTCPluginImpl : public FlutterWebRTCPlugin {
       : channel_(std::move(channel)),
         messenger_(registrar->messenger()),
         textures_(registrar->texture_registrar()) {
-    webrtc_ = std::make_unique<FlutterWebRTC>(this);
+    // Deliberately does NOT construct FlutterWebRTC here. Its base constructor
+    // calls LibWebRTC::CreateRTCPeerConnectionFactory(), which initialises the
+    // WebRTC audio device module. On a machine with no usable audio backend
+    // (no PulseAudio server, no sound card, a confined sandbox, a CI runner)
+    // that CHECK-fails in adm_helpers.cc and aborts the entire process during
+    // plugin registration - before any Dart code has run, so the app cannot
+    // even start. Construct it on first use instead, so a machine without
+    // audio can still run everything that is not a call.
   }
 
   // Called when a method is called on |channel_|;
   void HandleMethodCall(const MethodCall& method_call,
                         std::unique_ptr<MethodResult> result) {
     // handle method call and forward to webrtc native sdk.
+    if (!webrtc_) {
+      webrtc_ = std::make_unique<FlutterWebRTC>(this);
+    }
     auto method_call_proxy = MethodCallProxy::Create(method_call);
     webrtc_->HandleMethodCall(*method_call_proxy.get(),
                               MethodResultProxy::Create(std::move(result)));
